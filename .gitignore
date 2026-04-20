@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+PRenv/
+
+# Environment secrets
+.env
+
+# Model/index artifacts
+data/faiss_index.bin
+data/embeddings.npy
+data/chunks.json
+data/raw_docs.json
+
+# Local/editor artifacts
+.vscode/*.log
+
+# Misc large local files
+*.zip
+*.png

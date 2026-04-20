@@ -1,0 +1,9 @@
+python-dotenv
+google-genai
+transformers
+tqdm
+numpy
+faiss-cpu
+sentence-transformers
+datasets
+scikit-learn
