@@ -1,4 +1,6 @@
 import time
+import os
+import json
 
 from faiss_retriever import FaissRetriever
 from llm_client import LLMClient
@@ -6,20 +8,50 @@ from piperag_generator import PipeRAGGenerator
 from piperag_pipeline_engine import PipeRAGConfig, PipeRAGPipelineEngine
 
 
-def run_baseline(generator, query: str):
-    start = time.perf_counter()
-    initial = generator.initial_generation(query)
-    continuation = generator.continue_generation_with_stale_retrieval(
-        user_query=query,
-        partial_answer=initial["answer"],
-        step_number=2,
+VALIDATION_PATH = "../data/validation_queries.json"
+DEFAULT_QUERY_LIMIT = 50
+
+
+def load_benchmark_queries() -> list[str]:
+    limit_env = os.getenv("BENCHMARK_QUERY_LIMIT", "").strip()
+    query_limit = int(limit_env) if limit_env else DEFAULT_QUERY_LIMIT
+
+    if os.path.exists(VALIDATION_PATH):
+        with open(VALIDATION_PATH, "r", encoding="utf-8") as f:
+            rows = json.load(f)
+        queries = [row.get("query", "").strip() for row in rows if row.get("query", "").strip()]
+        if queries:
+            return queries[:query_limit]
+
+    # Fallback tiny set if validation file is not present yet.
+    return [
+        "When was the first barbie movie released?",
+        "Who developed the C programming language?",
+        "What is retrieval-augmented generation?",
+    ]
+
+
+def run_retro_baseline(engine, query: str):
+    """Paper-faithful baseline: chunked generation with retrieval, but no S1/S2/S3."""
+    baseline_cfg = PipeRAGConfig(
+        m_prime=64,
+        max_total_tokens=180,
+        top_k=3,
+        default_nprobe=10,
+        enable_s1_pipeline=False,
+        enable_s2_flexible_interval=False,
+        enable_s3_adaptive_nprobe=False,
+        apply_stale_shift_to_chunks=False,
     )
-    elapsed_ms = (time.perf_counter() - start) * 1000.0
+    result = engine.run(user_query=query, cfg=baseline_cfg, retrieval_model=None)
     return {
         "mode": "baseline",
-        "latency_ms": elapsed_ms,
-        "answer": (initial["answer"] + " " + continuation["continuation"]).strip(),
-        "overlap_ratio": 0.0,
+        "latency_ms": result["latency_ms"],
+        "answer": result["answer"],
+        "overlap_ratio": result["overlap_ratio"],
+        "prefetch_wait_ratio": result["prefetch_wait_ratio"],
+        "retrieval_within_budget_ratio": result["retrieval_within_budget_ratio"],
+        "average_nprobe": result["average_nprobe"],
     }
 
 
@@ -50,11 +82,8 @@ def main():
     )
     pipeline_engine = PipeRAGPipelineEngine(retriever=retriever, llm_client=llm_client)
 
-    queries = [
-        "When was the first barbie movie released?",
-        "Who developed the C programming language?",
-        "What is retrieval-augmented generation?",
-    ]
+    queries = load_benchmark_queries()
+    print(f"Loaded {len(queries)} benchmark queries")
 
     adaptive_model = generator.build_adaptive_model(
         sample_queries=queries,
@@ -111,7 +140,7 @@ def main():
     }
 
     for query in queries:
-        baseline = run_baseline(generator, query)
+        baseline = run_retro_baseline(pipeline_engine, query)
         results_by_mode["baseline"].append(baseline)
 
         for mode_name, cfg in ablations:

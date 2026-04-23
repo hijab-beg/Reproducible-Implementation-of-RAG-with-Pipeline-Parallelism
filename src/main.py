@@ -76,7 +76,7 @@ def main():
             enable_s2_flexible_interval=True,
             enable_s3_adaptive_nprobe=True,
         ),
-        retrieval_model=adaptive_model,
+        adaptive_model=adaptive_model,
     )
 
     print("Pipeline Answer:")

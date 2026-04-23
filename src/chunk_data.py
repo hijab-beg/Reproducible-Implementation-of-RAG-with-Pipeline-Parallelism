@@ -8,6 +8,8 @@ OUTPUT_PATH = "../data/chunks.json"
 TOKENIZER_NAME = "gpt2"
 CHUNK_SIZE = 64
 STRIDE = 32 # Overlap of 32 tokens between chunks
+# Target corpus size for paper-style larger-scale retrieval tests.
+TARGET_CHUNKS = 600000
 
 
 def load_docs(path: str):
@@ -69,8 +71,12 @@ def main():
         )
         all_chunks.extend(doc_chunks)
 
+        if len(all_chunks) >= TARGET_CHUNKS:
+            all_chunks = all_chunks[:TARGET_CHUNKS]
+            break
+
     save_chunks(all_chunks, OUTPUT_PATH)
-    print(f"Saved {len(all_chunks)} chunks to {OUTPUT_PATH}")
+    print(f"Saved {len(all_chunks)} chunks to {OUTPUT_PATH} (target={TARGET_CHUNKS})")
 
 
 if __name__ == "__main__":

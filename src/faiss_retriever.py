@@ -1,13 +1,7 @@
-import os
 import json
 import time
 import numpy as np
 import faiss
-
-# Keep sentence-transformers on PyTorch path only.
-os.environ.setdefault("USE_TF", "0")
-os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
-
 from sentence_transformers import SentenceTransformer
 
 class FaissRetriever:

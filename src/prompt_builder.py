@@ -3,9 +3,14 @@ def build_augmented_prompt(user_query: str, retrieved_chunks: list[str], partial
         [f"[Context {i+1}]\n{chunk}" for i, chunk in enumerate(retrieved_chunks)]
     )
 
+    if not context_text.strip():
+        context_text = "[No retrieved context]"
+
     if partial_answer.strip():
         return f"""
-Use the retrieved context if relevant, but you can also rely on general knowledge when the context is incomplete.
+You must answer using only the Retrieved Context.
+Do not use external or general knowledge.
+If the Retrieved Context does not contain enough information, answer exactly: "Insufficient context to answer."
 
 Question:
 {user_query}
@@ -20,7 +25,9 @@ Continue the answer:
 """.strip()
 
     return f"""
-Use the retrieved context if relevant, but you can also rely on general knowledge when the context is incomplete.
+You must answer using only the Retrieved Context.
+Do not use external or general knowledge.
+If the Retrieved Context does not contain enough information, answer exactly: "Insufficient context to answer."
 
 Question:
 {user_query}

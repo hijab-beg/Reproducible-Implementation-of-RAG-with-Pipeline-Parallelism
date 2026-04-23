@@ -5,7 +5,8 @@ from tqdm import tqdm
 
 OUTPUT_PATH = "../data/raw_docs.json"
 
-TARGET_DOCS = 10000
+# Increased to support larger chunk corpora (e.g., ~600k chunks after chunking).
+TARGET_DOCS = 30000
 MIN_CHAR_LENGTH = 1200
 
 
