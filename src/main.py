@@ -14,22 +14,11 @@ def print_retrieved_chunks(title: str, chunks: list[dict]):
         print(chunk["text"][:200] + "...")
 
 
-def main():
-    retriever = FaissRetriever(
-        chunks_path="../data/chunks.json",
-        index_path="../data/faiss_index.bin"
-    )
-    llm_client = LLMClient()
-    generator = PipeRAGGenerator(
-        retriever=retriever,
-        llm_client=llm_client,
-        top_k=3,
-        retrieval_interval=1
-    )
-    pipeline_engine = PipeRAGPipelineEngine(retriever=retriever, llm_client=llm_client)
+def is_chat_exit_command(user_text: str) -> bool:
+    return user_text.strip().lower() in {"bye", "exit", "quit"}
 
-    user_query = "When was the first barbie movie released?"
 
+def run_query(generator, pipeline_engine, user_query: str):
     print("\n=== INITIAL GENERATION ===\n")
     initial_result = generator.initial_generation(user_query)
 
@@ -76,7 +65,7 @@ def main():
             enable_s2_flexible_interval=True,
             enable_s3_adaptive_nprobe=True,
         ),
-        adaptive_model=adaptive_model,
+        retrieval_model=adaptive_model,
     )
 
     print("Pipeline Answer:")
@@ -89,6 +78,40 @@ def main():
             f"source={event['retrieval_source']} nprobe={event['nprobe']} "
             f"gen_tokens={event['generated_tokens']}"
         )
+
+
+def main():
+    retriever = FaissRetriever(
+        chunks_path="../data/chunks.json",
+        index_path="../data/faiss_index.bin"
+    )
+    llm_client = LLMClient()
+    generator = PipeRAGGenerator(
+        retriever=retriever,
+        llm_client=llm_client,
+        top_k=3,
+        retrieval_interval=1
+    )
+    pipeline_engine = PipeRAGPipelineEngine(retriever=retriever, llm_client=llm_client)
+
+    print("\nPipeRAG Chatbot Mode")
+    print("Type your question and press Enter.")
+    print("Type 'bye' (or 'exit'/'quit') to end.\n")
+
+    while True:
+        try:
+            user_query = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nSession ended.")
+            break
+
+        if not user_query:
+            continue
+        if is_chat_exit_command(user_query):
+            print("Goodbye!")
+            break
+
+        run_query(generator, pipeline_engine, user_query)
 
 
 if __name__ == "__main__":

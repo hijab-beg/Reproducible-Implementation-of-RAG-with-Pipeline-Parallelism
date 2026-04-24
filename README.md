@@ -14,6 +14,7 @@ This project implements a retrieval-augmented generation pipeline with FAISS ret
   - `chunks.json`
   - `faiss_index.bin`
 - `src/`
+  - `load_c4_subset.py` (C4 + Wikipedia corpus loader via Hugging Face)
   - `run.py` (single launcher)
   - `main.py` (demo script)
   - `benchmark_piperag.py`
@@ -162,6 +163,15 @@ You can override them:
 
 ```powershell
 python src/run.py --task demo --chunks-path "C:\path\to\chunks.json" --index-path "C:\path\to\faiss_index.bin"
+```
+
+## Corpus Generation
+
+The raw corpus is generated from Hugging Face C4 (`c4`, `en`) plus Wikipedia (`wikipedia`, `20220301.en`) and then chunked into retrieval units.
+
+```powershell
+python src/load_c4_subset.py
+python src/chunk_data.py
 ```
 
 ## Security Note

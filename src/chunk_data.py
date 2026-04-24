@@ -55,6 +55,27 @@ def chunk_document(tokenizer, doc_id: str, text: str, chunk_size: int, stride: i
     return chunks
 
 
+def _prepare_document_text(doc: dict) -> str:
+    if doc.get("source") == "wikipedia":
+        title = doc.get("title", "").strip()
+        text = doc.get("text", "").strip()
+
+        if title and text.startswith(title):
+            return text
+        if title:
+            return f"{title}\n\n{text}"
+        return text
+
+    title = doc.get("title", "").strip()
+    text = doc.get("text", "").strip()
+
+    if title and text.startswith(title):
+        return text
+    if title:
+        return f"{title}\n\n{text}"
+    return text
+
+
 def main():
     tokenizer = AutoTokenizer.from_pretrained(TOKENIZER_NAME)
     docs = load_docs(INPUT_PATH)
@@ -62,10 +83,11 @@ def main():
     all_chunks = []
 
     for doc in tqdm(docs, desc="Chunking documents"):
+        document_text = _prepare_document_text(doc)
         doc_chunks = chunk_document(
             tokenizer=tokenizer,
             doc_id=doc["doc_id"],
-            text=doc["text"],
+            text=document_text,
             chunk_size=CHUNK_SIZE,
             stride=STRIDE
         )

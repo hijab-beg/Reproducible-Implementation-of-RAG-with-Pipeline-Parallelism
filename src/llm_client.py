@@ -16,44 +16,89 @@ load_dotenv()
 class LLMClient:
     def __init__(self, model_name: str | None = None, backend: str | None = None):
         configured_backend = (backend or os.getenv("LLM_BACKEND", "")).strip().lower()
+        supported_backends = {"groq", "nvidia", "gemini", "ollama"}
+        if configured_backend and configured_backend not in supported_backends:
+            raise ValueError("LLM_BACKEND must be one of: groq, nvidia, gemini, ollama")
 
-        if configured_backend:
-            self.backend = configured_backend
-        elif os.getenv("NVIDIA_API_KEY"):
-            self.backend = "nvidia"
-        elif os.getenv("GEMINI_API_KEY"):
-            self.backend = "gemini"
+        self._model_override = model_name
+        self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+        self._groq_client = None
+        self._nvidia_client = None
+        self._gemini_client = None
+
+        self._explicit_backend = bool(configured_backend)
+        if self._explicit_backend:
+            self.backend_priority = [configured_backend]
         else:
-            self.backend = "ollama"
+            # Default auto-order requested by user: Groq -> NVIDIA -> Gemini -> Ollama.
+            self.backend_priority = ["groq", "nvidia", "gemini", "ollama"]
 
-        if self.backend not in {"gemini", "ollama", "nvidia"}:
-            raise ValueError("LLM_BACKEND must be one of: gemini, ollama, nvidia")
+        self.backend = self.backend_priority[0]
 
-        if self.backend == "nvidia":
+    def _is_backend_available(self, backend: str) -> bool:
+        if backend == "groq":
+            return OpenAI is not None and bool(os.getenv("GROQ_API_KEY"))
+        if backend == "nvidia":
+            return OpenAI is not None and bool(os.getenv("NVIDIA_API_KEY"))
+        if backend == "gemini":
+            return bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
+        if backend == "ollama":
+            return True
+        return False
+
+    def _build_model_name(self, backend: str) -> str:
+        if self._model_override:
+            return self._model_override
+        if backend == "groq":
+            return os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+        if backend == "nvidia":
+            return os.getenv("NVIDIA_MODEL", "minimaxai/minimax-m2.7")
+        if backend == "gemini":
+            return os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+        return os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+
+    def _ensure_backend_client(self, backend: str):
+        if backend == "groq":
+            if self._groq_client is not None:
+                return
+            if OpenAI is None:
+                raise ImportError("OpenAI library required for Groq backend. Install with: pip install openai")
+            api_key = os.getenv("GROQ_API_KEY")
+            if not api_key:
+                raise ValueError("GROQ_API_KEY not found in environment.")
+            self._groq_client = OpenAI(
+                base_url=os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1"),
+                api_key=api_key,
+            )
+            return
+
+        if backend == "nvidia":
+            if self._nvidia_client is not None:
+                return
             if OpenAI is None:
                 raise ImportError("OpenAI library required for NVIDIA backend. Install with: pip install openai")
             api_key = os.getenv("NVIDIA_API_KEY")
             if not api_key:
                 raise ValueError("NVIDIA_API_KEY not found in environment.")
-            self.client = OpenAI(
+            self._nvidia_client = OpenAI(
                 base_url="https://integrate.api.nvidia.com/v1",
-                api_key=api_key
+                api_key=api_key,
             )
-            self.model_name = model_name or os.getenv("NVIDIA_MODEL", "minimaxai/minimax-m2.7")
-        elif self.backend == "gemini":
-            api_key = os.getenv("GEMINI_API_KEY")
+            return
+
+        if backend == "gemini":
+            if self._gemini_client is not None:
+                return
+            api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
             if not api_key:
-                raise ValueError("GEMINI_API_KEY not found in environment.")
-            self.client = genai.Client(api_key=api_key)
-            self.model_name = model_name or "gemini-3-flash-preview"
-        else:
-            self.client = None
-            self.ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-            self.model_name = model_name or os.getenv("OLLAMA_MODEL", "llama3.1:8b")
+                raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY not found in environment.")
+            self._gemini_client = genai.Client(api_key=api_key)
+            return
 
     def _generate_ollama(self, prompt: str, max_tokens: int = 200) -> str:
+        model_name = self._build_model_name("ollama")
         payload = {
-            "model": self.model_name,
+            "model": model_name,
             "prompt": prompt,
             "stream": False,
             "options": {
@@ -84,11 +129,11 @@ class LLMClient:
         text = (data.get("response") or "").strip()
         return text
 
-    def _generate_nvidia(self, prompt: str, max_tokens: int = 200) -> str:
-        completion = self.client.chat.completions.create(
-            model=self.model_name,
+    def _generate_openai_chat(self, client, model_name: str, prompt: str, max_tokens: int = 200) -> str:
+        completion = client.chat.completions.create(
+            model=model_name,
             messages=[{"role": "user", "content": prompt}],
-            temperature=1.0,
+            temperature=0.3,
             top_p=0.95,
             max_tokens=max_tokens,
             stream=False,
@@ -96,19 +141,58 @@ class LLMClient:
         text = (completion.choices[0].message.content or "").strip()
         return text
 
-    def generate(self, prompt: str, max_tokens: int = 200) -> str:
-        if self.backend == "ollama":
+    def _generate_with_backend(self, backend: str, prompt: str, max_tokens: int = 200) -> str:
+        self._ensure_backend_client(backend)
+
+        if backend == "groq":
+            return self._generate_openai_chat(
+                self._groq_client,
+                self._build_model_name("groq"),
+                prompt,
+                max_tokens=max_tokens,
+            )
+
+        if backend == "nvidia":
+            return self._generate_openai_chat(
+                self._nvidia_client,
+                self._build_model_name("nvidia"),
+                prompt,
+                max_tokens=max_tokens,
+            )
+
+        if backend == "gemini":
+            response = self._gemini_client.models.generate_content(
+                model=self._build_model_name("gemini"),
+                contents=prompt,
+            )
+
+            text = getattr(response, "text", None)
+            if text:
+                return text.strip()
+
+            return str(response).strip()
+
+        if backend == "ollama":
             return self._generate_ollama(prompt, max_tokens=max_tokens)
-        elif self.backend == "nvidia":
-            return self._generate_nvidia(prompt, max_tokens=max_tokens)
 
-        response = self.client.models.generate_content(
-            model=self.model_name,
-            contents=prompt,
-        )
+        raise ValueError(f"Unsupported backend: {backend}")
 
-        text = getattr(response, "text", None)
-        if text:
-            return text.strip()
+    def generate(self, prompt: str, max_tokens: int = 200) -> str:
+        errors = []
 
-        return str(response).strip()
+        for backend in self.backend_priority:
+            if not self._is_backend_available(backend):
+                if self._explicit_backend:
+                    errors.append(f"{backend}: backend unavailable due to missing credentials/dependencies")
+                continue
+
+            self.backend = backend
+            try:
+                return self._generate_with_backend(backend, prompt, max_tokens=max_tokens)
+            except Exception as exc:
+                errors.append(f"{backend}: {exc}")
+                if self._explicit_backend:
+                    break
+
+        details = " | ".join(errors) if errors else "no backend candidates available"
+        raise RuntimeError(f"All configured LLM backends failed. Details: {details}")

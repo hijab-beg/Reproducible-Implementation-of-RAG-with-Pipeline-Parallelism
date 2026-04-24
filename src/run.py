@@ -6,7 +6,7 @@ from pathlib import Path
 os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 
-from benchmark_piperag import run_baseline, run_pipeline_mode
+from benchmark_piperag import run_pipeline_mode, run_retro_baseline
 from faiss_retriever import FaissRetriever
 from llm_client import LLMClient
 from piperag_generator import PipeRAGGenerator
@@ -63,7 +63,7 @@ def _run_demo_for_query(generator, pipeline_engine, args, user_query: str):
             "When was Python first released?",
         ],
         nprobe_values=[1, 5, 10, 20, 32],
-        min_nprobe=1,
+        min_nprobe=10,
         max_nprobe=64,
     )
 
@@ -73,7 +73,7 @@ def _run_demo_for_query(generator, pipeline_engine, args, user_query: str):
             m_prime=32,
             max_total_tokens=args.max_total_tokens,
             top_k=args.top_k,
-            default_nprobe=10,
+            default_nprobe=20,
             enable_s1_pipeline=True,
             enable_s2_flexible_interval=True,
             enable_s3_adaptive_nprobe=True,
@@ -91,6 +91,10 @@ def _run_demo_for_query(generator, pipeline_engine, args, user_query: str):
             f"source={event['retrieval_source']} nprobe={event['nprobe']} "
             f"gen_tokens={event['generated_tokens']}"
         )
+
+
+def _is_chat_exit_command(user_text: str) -> bool:
+    return user_text.strip().lower() in {"bye", "exit", "quit"}
 
 
 def _build_components(args):
@@ -139,17 +143,34 @@ def _build_components(args):
 
 def run_demo(args):
     generator, pipeline_engine = _build_components(args)
-    demo_queries = [
-        args.query,
-        "Who developed the C programming language?",
-        "What is retrieval-augmented generation?",
-    ]
 
-    for demo_query in demo_queries:
-        _run_demo_for_query(generator, pipeline_engine, args, demo_query)
+    print("\nPipeRAG Chatbot Mode")
+    print("Type your question and press Enter.")
+    print("Type 'bye' (or 'exit'/'quit') to end.\n")
+
+    if args.query:
+        _run_demo_for_query(generator, pipeline_engine, args, args.query)
+
+    while True:
+        try:
+            user_query = input("You: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\nSession ended.")
+            break
+
+        if not user_query:
+            continue
+        if _is_chat_exit_command(user_query):
+            print("Goodbye!")
+            break
+
+        _run_demo_for_query(generator, pipeline_engine, args, user_query)
 
 
 def run_retriever_test(args):
+    if not args.query:
+        raise ValueError("retriever-test requires --query.")
+
     generator, _ = _build_components(args)
     retriever = generator.retriever
 
@@ -181,6 +202,8 @@ def run_benchmark(args):
         "What is retrieval-augmented generation?",
     ]
 
+    benchmark_m_prime = max(64, args.max_total_tokens // 2)
+
     adaptive_model = generator.build_adaptive_model(
         sample_queries=queries,
         nprobe_values=[1, 5, 10, 20, 32],
@@ -192,7 +215,7 @@ def run_benchmark(args):
         (
             "s1_only",
             PipeRAGConfig(
-                m_prime=64,
+                m_prime=benchmark_m_prime,
                 max_total_tokens=args.max_total_tokens,
                 top_k=args.top_k,
                 default_nprobe=10,
@@ -204,7 +227,7 @@ def run_benchmark(args):
         (
             "s1_s2",
             PipeRAGConfig(
-                m_prime=32,
+                m_prime=benchmark_m_prime,
                 max_total_tokens=args.max_total_tokens,
                 top_k=args.top_k,
                 default_nprobe=10,
@@ -216,7 +239,7 @@ def run_benchmark(args):
         (
             "s1_s2_s3",
             PipeRAGConfig(
-                m_prime=32,
+                m_prime=benchmark_m_prime,
                 max_total_tokens=args.max_total_tokens,
                 top_k=args.top_k,
                 default_nprobe=10,
@@ -236,7 +259,13 @@ def run_benchmark(args):
     }
 
     for query in queries:
-        baseline = run_baseline(generator, query)
+        baseline = run_retro_baseline(
+            pipeline_engine,
+            query,
+            max_total_tokens=args.max_total_tokens,
+            m_prime=benchmark_m_prime,
+            top_k=args.top_k,
+        )
         results_by_mode["baseline"].append(baseline)
 
         for mode_name, cfg in ablations:
@@ -311,12 +340,12 @@ def parse_args():
     )
     parser.add_argument(
         "--query",
-        default="When was the first barbie movie released?",
-        help="User query for demo and retriever-test tasks.",
+        default=None,
+        help="Optional initial query for demo mode; required for retriever-test.",
     )
     parser.add_argument(
         "--backend",
-        choices=["groq", "gemini", "ollama"],
+        choices=["groq", "nvidia", "gemini", "ollama"],
         default=None,
         help="LLM backend. If omitted, existing env behavior is used.",
     )

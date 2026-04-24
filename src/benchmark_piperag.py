@@ -31,12 +31,19 @@ def load_benchmark_queries() -> list[str]:
     ]
 
 
-def run_retro_baseline(engine, query: str):
+def run_retro_baseline(
+    engine,
+    query: str,
+    *,
+    max_total_tokens: int = 180,
+    m_prime: int = 64,
+    top_k: int = 3,
+):
     """Paper-faithful baseline: chunked generation with retrieval, but no S1/S2/S3."""
     baseline_cfg = PipeRAGConfig(
-        m_prime=64,
-        max_total_tokens=180,
-        top_k=3,
+        m_prime=m_prime,
+        max_total_tokens=max_total_tokens,
+        top_k=top_k,
         default_nprobe=10,
         enable_s1_pipeline=False,
         enable_s2_flexible_interval=False,
@@ -85,6 +92,8 @@ def main():
     queries = load_benchmark_queries()
     print(f"Loaded {len(queries)} benchmark queries")
 
+    benchmark_m_prime = 90
+
     adaptive_model = generator.build_adaptive_model(
         sample_queries=queries,
         nprobe_values=[1, 5, 10, 20, 32],
@@ -96,7 +105,7 @@ def main():
         (
             "s1_only",
             PipeRAGConfig(
-                m_prime=64,
+                m_prime=benchmark_m_prime,
                 max_total_tokens=180,
                 top_k=3,
                 default_nprobe=10,
@@ -108,7 +117,7 @@ def main():
         (
             "s1_s2",
             PipeRAGConfig(
-                m_prime=32,
+                m_prime=benchmark_m_prime,
                 max_total_tokens=180,
                 top_k=3,
                 default_nprobe=10,
@@ -120,7 +129,7 @@ def main():
         (
             "s1_s2_s3",
             PipeRAGConfig(
-                m_prime=32,
+                m_prime=benchmark_m_prime,
                 max_total_tokens=180,
                 top_k=3,
                 default_nprobe=10,
@@ -140,7 +149,13 @@ def main():
     }
 
     for query in queries:
-        baseline = run_retro_baseline(pipeline_engine, query)
+        baseline = run_retro_baseline(
+            pipeline_engine,
+            query,
+            max_total_tokens=180,
+            m_prime=benchmark_m_prime,
+            top_k=3,
+        )
         results_by_mode["baseline"].append(baseline)
 
         for mode_name, cfg in ablations:

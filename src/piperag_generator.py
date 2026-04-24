@@ -38,7 +38,7 @@ class PipeRAGGenerator:
     def continue_generation_with_stale_retrieval(self, user_query: str, partial_answer: str, step_number: int):
         if self.should_retrieve(step_number):
             stale_query = self.get_stale_query_window(partial_answer)
-            if not stale_query:
+            if not stale_query or stale_query == "Insufficient context to answer.":
                 stale_query = user_query
             retrieved_chunks = self.retriever.search(stale_query, top_k=self.top_k)
         else:
