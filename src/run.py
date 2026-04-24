@@ -55,7 +55,7 @@ def _run_demo_for_query(generator, pipeline_engine, args, user_query: str):
     print("Continuation:")
     print(continuation_result["continuation"])
 
-    print("\n=== PIPELINE MODE (S1 + S2 + S3) ===\n")
+    print("\n=== PIPELINE MODE (S1 + S2 + S3 + S4) ===\n")
     adaptive_model = generator.build_adaptive_model(
         sample_queries=[
             user_query,
@@ -77,6 +77,7 @@ def _run_demo_for_query(generator, pipeline_engine, args, user_query: str):
             enable_s1_pipeline=True,
             enable_s2_flexible_interval=True,
             enable_s3_adaptive_nprobe=True,
+            enable_s4_uncertainty_gating=True,
         ),
         retrieval_model=adaptive_model,
     )
@@ -225,6 +226,20 @@ def run_benchmark(args):
             ),
         ),
         (
+            "s4_only",
+            PipeRAGConfig(
+                m_prime=benchmark_m_prime,
+                max_total_tokens=args.max_total_tokens,
+                top_k=args.top_k,
+                default_nprobe=10,
+                enable_s1_pipeline=False,
+                enable_s2_flexible_interval=False,
+                enable_s3_adaptive_nprobe=False,
+                enable_s4_uncertainty_gating=True,
+                uncertainty_threshold=0.5,
+            ),
+        ),
+        (
             "s1_s2",
             PipeRAGConfig(
                 m_prime=benchmark_m_prime,
@@ -249,13 +264,30 @@ def run_benchmark(args):
                 budget_safety_factor=0.9,
             ),
         ),
+        (
+            "s1_s2_s3_s4",
+            PipeRAGConfig(
+                m_prime=benchmark_m_prime,
+                max_total_tokens=args.max_total_tokens,
+                top_k=args.top_k,
+                default_nprobe=10,
+                enable_s1_pipeline=True,
+                enable_s2_flexible_interval=True,
+                enable_s3_adaptive_nprobe=True,
+                enable_s4_uncertainty_gating=True,
+                uncertainty_threshold=0.5,
+                budget_safety_factor=0.9,
+            ),
+        ),
     ]
 
     results_by_mode: dict[str, list[dict]] = {
         "baseline": [],
         "s1_only": [],
+        "s4_only": [],
         "s1_s2": [],
         "s1_s2_s3": [],
+        "s1_s2_s3_s4": [],
     }
 
     for query in queries:
@@ -278,21 +310,30 @@ def run_benchmark(args):
             )
             results_by_mode[mode_name].append(run)
 
-    print("Query\tBaseline (ms)\tS1 Only (ms)\tS1+S2 (ms)\tS1+S2+S3 (ms)\tS1 Overlap\tS1+S2 Overlap\tS1+S2+S3 Overlap")
+    print(
+        "Query\tBaseline (ms)\tS1 Only (ms)\tS4 Only (ms)\tS1+S2 (ms)\tS1+S2+S3 (ms)\t"
+        "S1+S2+S3+S4 (ms)\tS1 Overlap\tS4 Overlap\tS1+S2 Overlap\tS1+S2+S3 Overlap\tS1+S2+S3+S4 Overlap"
+    )
     for i, query in enumerate(queries):
         baseline = results_by_mode["baseline"][i]
         s1 = results_by_mode["s1_only"][i]
+        s4 = results_by_mode["s4_only"][i]
         s1s2 = results_by_mode["s1_s2"][i]
         s1s2s3 = results_by_mode["s1_s2_s3"][i]
+        s1s2s3s4 = results_by_mode["s1_s2_s3_s4"][i]
         print(
             f"{query}\t"
             f"{baseline['latency_ms']:.2f}\t"
             f"{s1['latency_ms']:.2f}\t"
+            f"{s4['latency_ms']:.2f}\t"
             f"{s1s2['latency_ms']:.2f}\t"
             f"{s1s2s3['latency_ms']:.2f}\t"
+            f"{s1s2s3s4['latency_ms']:.2f}\t"
             f"{s1['overlap_ratio']:.2f}\t"
+            f"{s4['overlap_ratio']:.2f}\t"
             f"{s1s2['overlap_ratio']:.2f}\t"
-            f"{s1s2s3['overlap_ratio']:.2f}"
+            f"{s1s2s3['overlap_ratio']:.2f}\t"
+            f"{s1s2s3s4['overlap_ratio']:.2f}"
         )
 
     def avg_latency(mode_name: str) -> float:
@@ -305,25 +346,35 @@ def run_benchmark(args):
 
     avg_baseline = avg_latency("baseline")
     avg_s1 = avg_latency("s1_only")
+    avg_s4 = avg_latency("s4_only")
     avg_s1s2 = avg_latency("s1_s2")
     avg_s1s2s3 = avg_latency("s1_s2_s3")
+    avg_s1s2s3s4 = avg_latency("s1_s2_s3_s4")
 
     print("\nAverages")
     print("Metric\tValue")
     print(f"Average Baseline (ms)\t{avg_baseline:.2f}")
     print(f"Average S1 Only (ms)\t{avg_s1:.2f}")
+    print(f"Average S4 Only (ms)\t{avg_s4:.2f}")
     print(f"Average S1+S2 (ms)\t{avg_s1s2:.2f}")
     print(f"Average S1+S2+S3 (ms)\t{avg_s1s2s3:.2f}")
+    print(f"Average S1+S2+S3+S4 (ms)\t{avg_s1s2s3s4:.2f}")
     print(f"Average S1 Overlap\t{avg_overlap('s1_only'):.2f}")
+    print(f"Average S4 Overlap\t{avg_overlap('s4_only'):.2f}")
     print(f"Average S1+S2 Overlap\t{avg_overlap('s1_s2'):.2f}")
     print(f"Average S1+S2+S3 Overlap\t{avg_overlap('s1_s2_s3'):.2f}")
+    print(f"Average S1+S2+S3+S4 Overlap\t{avg_overlap('s1_s2_s3_s4'):.2f}")
 
     if avg_s1 > 0:
         print(f"Speedup Baseline / S1 Only\t{avg_baseline / avg_s1:.2f}x")
+    if avg_s4 > 0:
+        print(f"Speedup Baseline / S4 Only\t{avg_baseline / avg_s4:.2f}x")
     if avg_s1s2 > 0:
         print(f"Speedup Baseline / S1+S2\t{avg_baseline / avg_s1s2:.2f}x")
     if avg_s1s2s3 > 0:
         print(f"Speedup Baseline / S1+S2+S3\t{avg_baseline / avg_s1s2s3:.2f}x")
+    if avg_s1s2s3s4 > 0:
+        print(f"Speedup Baseline / S1+S2+S3+S4\t{avg_baseline / avg_s1s2s3s4:.2f}x")
 
 
 def parse_args():

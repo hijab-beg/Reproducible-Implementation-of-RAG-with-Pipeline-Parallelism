@@ -71,6 +71,7 @@ def run_pipeline_mode(engine, query: str, retrieval_model, cfg: PipeRAGConfig, m
         "overlap_ratio": result["overlap_ratio"],
         "prefetch_wait_ratio": result["prefetch_wait_ratio"],
         "retrieval_within_budget_ratio": result["retrieval_within_budget_ratio"],
+        "retrieval_trigger_ratio": result.get("retrieval_trigger_ratio", 1.0),
         "average_nprobe": result["average_nprobe"],
     }
 
@@ -115,6 +116,20 @@ def main():
             ),
         ),
         (
+            "s4_only",
+            PipeRAGConfig(
+                m_prime=benchmark_m_prime,
+                max_total_tokens=180,
+                top_k=3,
+                default_nprobe=10,
+                enable_s1_pipeline=False,
+                enable_s2_flexible_interval=False,
+                enable_s3_adaptive_nprobe=False,
+                enable_s4_uncertainty_gating=True,
+                uncertainty_threshold=0.5,
+            ),
+        ),
+        (
             "s1_s2",
             PipeRAGConfig(
                 m_prime=benchmark_m_prime,
@@ -139,13 +154,30 @@ def main():
                 budget_safety_factor=0.9,
             ),
         ),
+        (
+            "s1_s2_s3_s4",
+            PipeRAGConfig(
+                m_prime=benchmark_m_prime,
+                max_total_tokens=180,
+                top_k=3,
+                default_nprobe=10,
+                enable_s1_pipeline=True,
+                enable_s2_flexible_interval=True,
+                enable_s3_adaptive_nprobe=True,
+                enable_s4_uncertainty_gating=True,
+                uncertainty_threshold=0.5,
+                budget_safety_factor=0.9,
+            ),
+        ),
     ]
 
     results_by_mode: dict[str, list[dict]] = {
         "baseline": [],
         "s1_only": [],
+        "s4_only": [],
         "s1_s2": [],
         "s1_s2_s3": [],
+        "s1_s2_s3_s4": [],
     }
 
     for query in queries:
@@ -171,14 +203,17 @@ def main():
         print("=" * 60)
         print(f"Query: {query}")
         print(f"Baseline latency: {baseline['latency_ms']:.2f} ms")
+        print(f"Baseline answer: {baseline['answer']}")
         for mode_name, _ in ablations:
             current = results_by_mode[mode_name][-1]
             print(
                 f"{mode_name} latency: {current['latency_ms']:.2f} ms | "
                 f"overlap={current['overlap_ratio']:.2f} | "
                 f"budget_ok={current['retrieval_within_budget_ratio']:.2f} | "
+                f"retrieve_ratio={current['retrieval_trigger_ratio']:.2f} | "
                 f"avg_nprobe={current['average_nprobe']:.1f}"
             )
+            print(f"{mode_name} answer: {current['answer']}")
 
     def avg_latency(mode_name: str) -> float:
         runs = results_by_mode[mode_name]
@@ -198,12 +233,18 @@ def main():
 
     avg_baseline = avg_latency("baseline")
     avg_s1 = avg_latency("s1_only")
+    avg_s4 = avg_latency("s4_only")
     avg_s1s2 = avg_latency("s1_s2")
     avg_s1s2s3 = avg_latency("s1_s2_s3")
+    avg_s1s2s3s4 = avg_latency("s1_s2_s3_s4")
 
     print("\n" + "#" * 60)
     print("Paper-style Person 3 Ablation Summary")
     print(f"Average baseline latency: {avg_baseline:.2f} ms")
+    print(
+        f"Average s4_only latency: {avg_s4:.2f} ms | overlap={avg_overlap('s4_only'):.2f} | "
+        f"budget_ok={avg_budget_ok('s4_only'):.2f} | avg_nprobe={avg_nprobe('s4_only'):.1f}"
+    )
     print(
         f"Average s1_only latency: {avg_s1:.2f} ms | overlap={avg_overlap('s1_only'):.2f} | "
         f"budget_ok={avg_budget_ok('s1_only'):.2f} | avg_nprobe={avg_nprobe('s1_only'):.1f}"
@@ -216,13 +257,21 @@ def main():
         f"Average s1_s2_s3 latency: {avg_s1s2s3:.2f} ms | overlap={avg_overlap('s1_s2_s3'):.2f} | "
         f"budget_ok={avg_budget_ok('s1_s2_s3'):.2f} | avg_nprobe={avg_nprobe('s1_s2_s3'):.1f}"
     )
+    print(
+        f"Average s1_s2_s3_s4 latency: {avg_s1s2s3s4:.2f} ms | overlap={avg_overlap('s1_s2_s3_s4'):.2f} | "
+        f"budget_ok={avg_budget_ok('s1_s2_s3_s4'):.2f} | avg_nprobe={avg_nprobe('s1_s2_s3_s4'):.1f}"
+    )
 
     if avg_s1 > 0:
         print(f"Speedup baseline/s1_only: {avg_baseline / avg_s1:.2f}x")
+    if avg_s4 > 0:
+        print(f"Speedup baseline/s4_only: {avg_baseline / avg_s4:.2f}x")
     if avg_s1s2 > 0:
         print(f"Speedup baseline/s1_s2: {avg_baseline / avg_s1s2:.2f}x")
     if avg_s1s2s3 > 0:
         print(f"Speedup baseline/s1_s2_s3: {avg_baseline / avg_s1s2s3:.2f}x")
+    if avg_s1s2s3s4 > 0:
+        print(f"Speedup baseline/s1_s2_s3_s4: {avg_baseline / avg_s1s2s3s4:.2f}x")
 
 
 if __name__ == "__main__":
