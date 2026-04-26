@@ -1,5 +1,6 @@
 import os
 import json
+import re
 import urllib.request
 import urllib.error
 from dotenv import load_dotenv
@@ -95,16 +96,16 @@ class LLMClient:
             self._gemini_client = genai.Client(api_key=api_key)
             return
 
-    def _generate_ollama(self, prompt: str, max_tokens: int = 200) -> str:
+    def _generate_ollama(self, prompt: str, max_tokens: int | None = 200) -> str:
         model_name = self._build_model_name("ollama")
         payload = {
             "model": model_name,
             "prompt": prompt,
             "stream": False,
-            "options": {
-                "num_predict": max_tokens,
-            },
         }
+
+        if max_tokens is not None:
+            payload["options"] = {"num_predict": max_tokens}
 
         request = urllib.request.Request(
             url=f"{self.ollama_base_url}/api/generate",
@@ -129,19 +130,22 @@ class LLMClient:
         text = (data.get("response") or "").strip()
         return text
 
-    def _generate_openai_chat(self, client, model_name: str, prompt: str, max_tokens: int = 200) -> str:
-        completion = client.chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            top_p=0.95,
-            max_tokens=max_tokens,
-            stream=False,
-        )
+    def _generate_openai_chat(self, client, model_name: str, prompt: str, max_tokens: int | None = 200) -> str:
+        request_args = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.3,
+            "top_p": 0.95,
+            "stream": False,
+        }
+        if max_tokens is not None:
+            request_args["max_tokens"] = max_tokens
+
+        completion = client.chat.completions.create(**request_args)
         text = (completion.choices[0].message.content or "").strip()
         return text
 
-    def _generate_with_backend(self, backend: str, prompt: str, max_tokens: int = 200) -> str:
+    def _generate_with_backend(self, backend: str, prompt: str, max_tokens: int | None = 200) -> str:
         self._ensure_backend_client(backend)
 
         if backend == "groq":
@@ -177,7 +181,30 @@ class LLMClient:
 
         raise ValueError(f"Unsupported backend: {backend}")
 
-    def generate(self, prompt: str, max_tokens: int = 200) -> str:
+    def _remove_repeated_sentences(self, text: str) -> str:
+        normalized = " ".join(text.split()).strip()
+        if not normalized:
+            return normalized
+
+        sentence_parts = re.split(r"(?<=[.!?])\s+", normalized)
+        cleaned = []
+        seen = set()
+
+        for part in sentence_parts:
+            sentence = part.strip()
+            if not sentence:
+                continue
+            if sentence in seen:
+                continue
+            seen.add(sentence)
+            cleaned.append(sentence)
+
+        result = " ".join(cleaned).strip()
+        if result and result[-1] not in ".!?":
+            result += "."
+        return result
+
+    def generate(self, prompt: str, max_tokens: int | None = None) -> str:
         errors = []
 
         for backend in self.backend_priority:
@@ -188,7 +215,8 @@ class LLMClient:
 
             self.backend = backend
             try:
-                return self._generate_with_backend(backend, prompt, max_tokens=max_tokens)
+                result = self._generate_with_backend(backend, prompt, max_tokens=max_tokens)
+                return self._remove_repeated_sentences(result)
             except Exception as exc:
                 errors.append(f"{backend}: {exc}")
                 if self._explicit_backend:

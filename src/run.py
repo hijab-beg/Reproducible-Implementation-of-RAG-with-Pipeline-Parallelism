@@ -29,11 +29,11 @@ def _print_retrieved_chunks(title: str, chunks: list[dict]):
         print(chunk["text"][:200] + "...")
 
 
-def _run_demo_for_query(generator, pipeline_engine, args, user_query: str):
+def _run_demo_for_query(generator, pipeline_engine, args, user_query: str, conversation_history: list[tuple[str, str]]):
     print(f"\n{'#' * 12} Query: {user_query} {'#' * 12}\n")
 
     print("=== INITIAL GENERATION ===\n")
-    initial_result = generator.initial_generation(user_query)
+    initial_result = generator.initial_generation(user_query, conversation_history=conversation_history)
 
     _print_retrieved_chunks("Retrieved Chunks:", initial_result["retrieved_chunks"])
     print("Initial Answer:")
@@ -44,6 +44,7 @@ def _run_demo_for_query(generator, pipeline_engine, args, user_query: str):
         user_query=user_query,
         partial_answer=initial_result["answer"],
         step_number=2,
+        conversation_history=conversation_history,
     )
 
     print("Stale Query Used:")
@@ -69,6 +70,7 @@ def _run_demo_for_query(generator, pipeline_engine, args, user_query: str):
 
     pipeline_result = pipeline_engine.run(
         user_query=user_query,
+        conversation_history=conversation_history,
         cfg=PipeRAGConfig(
             m_prime=32,
             max_total_tokens=args.max_total_tokens,
@@ -92,6 +94,8 @@ def _run_demo_for_query(generator, pipeline_engine, args, user_query: str):
             f"source={event['retrieval_source']} nprobe={event['nprobe']} "
             f"gen_tokens={event['generated_tokens']}"
         )
+
+    return pipeline_result["answer"]
 
 
 def _is_chat_exit_command(user_text: str) -> bool:
@@ -144,13 +148,15 @@ def _build_components(args):
 
 def run_demo(args):
     generator, pipeline_engine = _build_components(args)
+    conversation_history: list[tuple[str, str]] = []
 
     print("\nPipeRAG Chatbot Mode")
     print("Type your question and press Enter.")
     print("Type 'bye' (or 'exit'/'quit') to end.\n")
 
     if args.query:
-        _run_demo_for_query(generator, pipeline_engine, args, args.query)
+        assistant_answer = _run_demo_for_query(generator, pipeline_engine, args, args.query, conversation_history)
+        conversation_history.extend([("user", args.query), ("assistant", assistant_answer)])
 
     while True:
         try:
@@ -165,7 +171,8 @@ def run_demo(args):
             print("Goodbye!")
             break
 
-        _run_demo_for_query(generator, pipeline_engine, args, user_query)
+        assistant_answer = _run_demo_for_query(generator, pipeline_engine, args, user_query, conversation_history)
+        conversation_history.extend([("user", user_query), ("assistant", assistant_answer)])
 
 
 def run_retriever_test(args):

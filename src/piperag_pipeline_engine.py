@@ -119,6 +119,7 @@ class PipeRAGPipelineEngine:
         user_query: str,
         cfg: PipeRAGConfig,
         retrieval_model: RetrievalLatencyModel | None = None,
+        conversation_history: list[tuple[str, str]] | None = None,
     ) -> dict:
         effective_m = cfg.m_prime if cfg.enable_s2_flexible_interval else 64
         stale_offset = cfg.stale_offset_tokens
@@ -235,10 +236,11 @@ class PipeRAGPipelineEngine:
                     user_query=user_query,
                     retrieved_chunks=[chunk["text"] for chunk in chunks],
                     partial_answer=partial_answer,
+                    conversation_history=conversation_history,
                 )
 
                 gen_start = time.perf_counter()
-                continuation = self.llm_client.generate(prompt, max_tokens=effective_m)
+                continuation = self.llm_client.generate(prompt)
                 gen_ms = (time.perf_counter() - gen_start) * 1000.0
                 generation_ema.observe(gen_ms)
 

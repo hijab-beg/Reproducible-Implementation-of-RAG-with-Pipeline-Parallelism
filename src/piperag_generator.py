@@ -24,10 +24,14 @@ class PipeRAGGenerator:
     def should_retrieve(self, step_number: int) -> bool:
         return step_number % self.retrieval_interval == 0
 
-    def initial_generation(self, user_query: str):
+    def initial_generation(self, user_query: str, conversation_history: list[tuple[str, str]] | None = None):
         retrieved_chunks = self.retriever.search(user_query, top_k=self.top_k)
-        prompt = build_augmented_prompt(user_query, [chunk["text"] for chunk in retrieved_chunks])
-        answer = self.llm_client.generate(prompt, max_tokens=180)
+        prompt = build_augmented_prompt(
+            user_query,
+            [chunk["text"] for chunk in retrieved_chunks],
+            conversation_history=conversation_history,
+        )
+        answer = self.llm_client.generate(prompt)
 
         return {
             "step": 1,
@@ -35,7 +39,13 @@ class PipeRAGGenerator:
             "answer": answer
         }
 
-    def continue_generation_with_stale_retrieval(self, user_query: str, partial_answer: str, step_number: int):
+    def continue_generation_with_stale_retrieval(
+        self,
+        user_query: str,
+        partial_answer: str,
+        step_number: int,
+        conversation_history: list[tuple[str, str]] | None = None,
+    ):
         if self.should_retrieve(step_number):
             stale_query = self.get_stale_query_window(partial_answer)
             if not stale_query or stale_query == "Insufficient context to answer.":
@@ -49,8 +59,10 @@ class PipeRAGGenerator:
             user_query=user_query,
             retrieved_chunks=[chunk["text"] for chunk in retrieved_chunks],
             partial_answer=partial_answer
+            ,
+            conversation_history=conversation_history,
         )
-        continuation = self.llm_client.generate(prompt, max_tokens=180)
+        continuation = self.llm_client.generate(prompt)
 
         return {
             "step": step_number,

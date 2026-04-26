@@ -18,9 +18,9 @@ def is_chat_exit_command(user_text: str) -> bool:
     return user_text.strip().lower() in {"bye", "exit", "quit"}
 
 
-def run_query(generator, pipeline_engine, user_query: str):
+def run_query(generator, pipeline_engine, user_query: str, conversation_history: list[tuple[str, str]]):
     print("\n=== INITIAL GENERATION ===\n")
-    initial_result = generator.initial_generation(user_query)
+    initial_result = generator.initial_generation(user_query, conversation_history=conversation_history)
 
     print_retrieved_chunks("Retrieved Chunks:", initial_result["retrieved_chunks"])
     print("Initial Answer:")
@@ -30,7 +30,8 @@ def run_query(generator, pipeline_engine, user_query: str):
     continuation_result = generator.continue_generation_with_stale_retrieval(
         user_query=user_query,
         partial_answer=initial_result["answer"],
-        step_number=2
+        step_number=2,
+        conversation_history=conversation_history,
     )
 
     print("Stale Query Used:")
@@ -56,6 +57,7 @@ def run_query(generator, pipeline_engine, user_query: str):
 
     pipeline_result = pipeline_engine.run(
         user_query=user_query,
+        conversation_history=conversation_history,
         cfg=PipeRAGConfig(
             m_prime=32,
             max_total_tokens=180,
@@ -79,6 +81,8 @@ def run_query(generator, pipeline_engine, user_query: str):
             f"gen_tokens={event['generated_tokens']}"
         )
 
+    return pipeline_result["answer"]
+
 
 def main():
     retriever = FaissRetriever(
@@ -98,6 +102,8 @@ def main():
     print("Type your question and press Enter.")
     print("Type 'bye' (or 'exit'/'quit') to end.\n")
 
+    conversation_history: list[tuple[str, str]] = []
+
     while True:
         try:
             user_query = input("You: ").strip()
@@ -111,7 +117,8 @@ def main():
             print("Goodbye!")
             break
 
-        run_query(generator, pipeline_engine, user_query)
+        assistant_answer = run_query(generator, pipeline_engine, user_query, conversation_history)
+        conversation_history.extend([("user", user_query), ("assistant", assistant_answer)])
 
 
 if __name__ == "__main__":
