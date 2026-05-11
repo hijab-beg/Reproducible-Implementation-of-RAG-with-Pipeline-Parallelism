@@ -8,20 +8,28 @@ from piperag_generator import PipeRAGGenerator
 from piperag_pipeline_engine import PipeRAGConfig, PipeRAGPipelineEngine
 
 
-VALIDATION_PATH = "../data/validation_queries.json"
+import random
+from pathlib import Path
+
+_DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+VALIDATION_PATH = _DATA_DIR / "validation_queries.json"
 DEFAULT_QUERY_LIMIT = 50
 
 
-def load_benchmark_queries() -> list[str]:
-    limit_env = os.getenv("BENCHMARK_QUERY_LIMIT", "").strip()
-    query_limit = int(limit_env) if limit_env else DEFAULT_QUERY_LIMIT
+def load_benchmark_queries(limit: int | None = None, seed: int | None = None) -> list[str]:
+    query_limit = limit if limit is not None else int(os.getenv("BENCHMARK_QUERY_LIMIT", str(DEFAULT_QUERY_LIMIT)))
 
-    if os.path.exists(VALIDATION_PATH):
+    if VALIDATION_PATH.exists():
         with open(VALIDATION_PATH, "r", encoding="utf-8") as f:
             rows = json.load(f)
         queries = [row.get("query", "").strip() for row in rows if row.get("query", "").strip()]
         if queries:
-            return queries[:query_limit]
+            if seed is not None:
+                rng = random.Random(seed)
+                queries = rng.sample(queries, min(query_limit, len(queries)))
+            else:
+                queries = queries[:query_limit]
+            return queries
 
     # Fallback tiny set if validation file is not present yet.
     return [

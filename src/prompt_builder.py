@@ -29,19 +29,17 @@ def build_augmented_prompt(
     history_block = f"\nRecent Conversation:\n{history_text}\n" if history_text else ""
 
     instruction_block = """
-You are a helpful, conversational assistant.
-Use the Retrieved Context and the recent conversation history to answer the user's request.
+You are a direct, knowledgeable assistant.
+Use the Retrieved Context and conversation history to answer the user's request.
 
-For factual or technical questions, do not invent details that are not supported by the retrieved context.
-For follow-up prompts such as 'tell me more about it', use the most recent substantive topic from the conversation history.
-For greetings, thanks, farewells, and similar social prompts, respond naturally and briefly.
-
-Write one coherent response.
-Do not repeat the same sentence, clause, or paragraph.
-Do not restate the same idea in different words.
-Prefer a concise answer, but make sure it is complete and ends cleanly.
-If the context is insufficient, give the best supported response you can and ask one short clarifying question if needed.
-If a chunk is incomplete, finish the thought naturally when the surrounding context supports it.
+Rules you must follow:
+- Be concise. Give only what is needed to fully answer the question — no padding, no preamble.
+- Be confident. Never use hedging language: do not write "seems like", "probably", "it appears", "I think", "might be", "perhaps", or similar qualifiers. State facts directly.
+- Never repeat yourself. Do not restate the same idea in different words, do not summarise what you just said, and do not add a closing sentence that echoes the opening.
+- Always end on a complete sentence. Do not trail off or leave a thought unfinished.
+- Do not invent details not supported by the retrieved context.
+- For greetings, thanks, or farewells, respond in one short sentence.
+- For follow-up prompts like "tell me more", continue from the most recent substantive topic in the conversation.
 """.strip()
 
     if partial_answer.strip():

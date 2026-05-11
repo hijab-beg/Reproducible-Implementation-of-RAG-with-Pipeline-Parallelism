@@ -6,7 +6,7 @@ from pathlib import Path
 os.environ.setdefault("USE_TF", "0")
 os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
 
-from benchmark_piperag import run_pipeline_mode, run_retro_baseline
+from benchmark_piperag import load_benchmark_queries, run_pipeline_mode, run_retro_baseline
 from faiss_retriever import FaissRetriever
 from llm_client import LLMClient
 from piperag_generator import PipeRAGGenerator
@@ -204,11 +204,7 @@ def run_retriever_test(args):
 def run_benchmark(args):
     generator, pipeline_engine = _build_components(args)
 
-    queries = [
-        "When was the first barbie movie released?",
-        "Who developed the C programming language?",
-        "What is retrieval-augmented generation?",
-    ]
+    queries = load_benchmark_queries(limit=args.val_queries, seed=args.val_seed)
 
     benchmark_m_prime = max(64, args.max_total_tokens // 2)
 
@@ -464,6 +460,18 @@ def parse_args():
         type=int,
         default=180,
         help="Max total generation tokens for pipeline mode.",
+    )
+    parser.add_argument(
+        "--val-queries",
+        type=int,
+        default=None,
+        help="Number of queries to load from validation_queries.json for benchmark (default: 50).",
+    )
+    parser.add_argument(
+        "--val-seed",
+        type=int,
+        default=None,
+        help="Random seed for sampling validation queries (omit to take the first N in order).",
     )
     parser.add_argument(
         "--chunks-path",

@@ -1,0 +1,71 @@
+{
+	"schema_version": 1,
+	"modes": [
+		"baseline",
+		"s1_only",
+		"s1_s2",
+		"s1_s2_s3"
+	],
+	"per_query": [
+		{
+			"query": "When was the first barbie movie released?",
+			"latency_ms": {
+				"baseline": 1515.54,
+				"s1_only": 1042.12,
+				"s1_s2": 891.45,
+				"s1_s2_s3": 470.27
+			},
+			"overlap_ratio": {
+				"s1_only": 0.67,
+				"s1_s2": 0.5,
+				"s1_s2_s3": 0.5
+			}
+		},
+		{
+			"query": "Who developed the C programming language?",
+			"latency_ms": {
+				"baseline": 1301.9,
+				"s1_only": 351.61,
+				"s1_s2": 449.72,
+				"s1_s2_s3": 515.66
+			},
+			"overlap_ratio": {
+				"s1_only": 0.67,
+				"s1_s2": 0.5,
+				"s1_s2_s3": 0.5
+			}
+		},
+		{
+			"query": "What is retrieval-augmented generation?",
+			"latency_ms": {
+				"baseline": 1026.71,
+				"s1_only": 352.68,
+				"s1_s2": 256.47,
+				"s1_s2_s3": 474.02
+			},
+			"overlap_ratio": {
+				"s1_only": 0.67,
+				"s1_s2": 0.5,
+				"s1_s2_s3": 0.5
+			}
+		}
+	],
+	"averages": {
+		"latency_ms": {
+			"baseline": 1281.38,
+			"s1_only": 582.14,
+			"s1_s2": 532.54,
+			"s1_s2_s3": 486.65
+		},
+		"overlap_ratio": {
+			"s1_only": 0.67,
+			"s1_s2": 0.5,
+			"s1_s2_s3": 0.5
+		}
+	},
+	"speedups": {
+		"baseline_over_s1_only": 2.2,
+		"baseline_over_s1_s2": 2.41,
+		"baseline_over_s1_s2_s3": 2.63
+	}
+}

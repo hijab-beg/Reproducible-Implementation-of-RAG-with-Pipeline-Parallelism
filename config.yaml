@@ -1,0 +1,33 @@
+# Central config for the root-level wrappers (train.py / inference.py)
+# Note: `train.py` and `inference.py` can run without PyYAML; they fall back to a
+# simple key:value parser for top-level keys.
+
+# Data paths (relative to repo root)
+chunks_path: data/chunks.json
+index_path: data/faiss_index.bin
+
+# LLM settings (leave as null to rely on environment variables + existing defaults)
+backend: null   # groq | gemini | ollama
+model: null
+max_rpm: null
+fallback_ollama: false
+
+# Inference defaults
+query: "What is retrieval-augmented generation?"
+top_k: 3
+max_total_tokens: 180
+
+# PipeRAG pipeline knobs (passed to PipeRAGConfig)
+m_prime: 32
+default_nprobe: 20
+budget_safety_factor: 0.9
+uncertainty_threshold: 0.5
+
+enable_s1_pipeline: true
+enable_s2_flexible_interval: true
+enable_s3_adaptive_nprobe: true
+enable_s4_uncertainty_gating: false
+
+# Benchmark defaults
+val_queries: 50
+val_seed: null
